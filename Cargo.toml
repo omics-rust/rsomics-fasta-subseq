@@ -1,11 +1,11 @@
 [package]
 name = "rsomics-fasta-subseq"
 version = "0.1.0"
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-repository.workspace = true
-authors.workspace = true
+edition = "2024"
+rust-version = "1.91"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/omics-rust/rsomics-world"
+authors = ["Zane Leong <efd@live.com>"]
 description = "Extract FASTA subsequences by 1-based region — seqkit subseq port"
 
 [[bin]]
