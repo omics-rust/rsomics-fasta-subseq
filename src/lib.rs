@@ -1,17 +1,3 @@
-//! Extract FASTA subsequences by 1-based region.
-//!
-//! Implements `seqkit subseq -r` semantics:
-//!
-//! - Coordinates are 1-based, inclusive on both ends.
-//! - Negative indices count from the sequence end: -1 = last base, -2 =
-//!   second-to-last, etc.
-//! - Index 0 is an error.
-//! - When the requested window extends beyond the sequence, it is clamped to
-//!   the actual sequence bounds (the header reflects the requested coords).
-//! - An out-of-range window (start > `seq_len` after resolution) produces a
-//!   record with an empty sequence — matching seqkit's behaviour.
-//! - Parsing complexity: O(N) — single forward scan, no index required.
-
 use std::io::Write;
 use std::path::Path;
 
@@ -87,18 +73,14 @@ impl Region {
     }
 }
 
-/// Configuration for the subseq operation.
 pub struct SubseqOptions {
     pub region: Region,
     /// Append `:{start}-{end}` to the sequence ID in the output header.
     pub append_coord: bool,
-    /// FASTA output line width (0 = no wrap).
+    /// 0 = no wrap.
     pub line_width: usize,
 }
 
-/// Extract subsequences from `input` and write FASTA to `out`.
-///
-/// `out` should be wrapped in a `BufWriter` by the caller.
 pub fn subseq(input: &Path, opts: &SubseqOptions, out: &mut dyn Write) -> Result<u64> {
     let mut reader = parse_fastx_file(input)
         .map_err(|e| RsomicsError::InvalidInput(format!("{}: {e}", input.display())))?;
@@ -110,7 +92,6 @@ pub fn subseq(input: &Path, opts: &SubseqOptions, out: &mut dyn Write) -> Result
         let full_header = std::str::from_utf8(rec.id())
             .map_err(|e| RsomicsError::InvalidInput(format!("non-UTF-8 header: {e}")))?;
 
-        // Split ID (first token) from the rest (description after first space).
         let (id, desc) = match full_header.find(' ') {
             Some(pos) => (&full_header[..pos], Some(&full_header[pos..])),
             None => (full_header, None),
