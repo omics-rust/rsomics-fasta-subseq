@@ -31,14 +31,22 @@ impl Region {
             ));
         }
 
+        // A start counted from the end paired with an end counted from the
+        // front spans an ambiguous window; seqkit rejects it rather than guess.
+        if start < 0 && end > 0 {
+            return Err(RsomicsError::InvalidInput(
+                "when start < 0, end should not > 0".to_string(),
+            ));
+        }
+
         Ok(Self { start, end })
     }
 
     /// Resolve region against a sequence of `seq_len` bases.
     ///
     /// Returns `(start0, end0_excl)` — 0-based half-open — clamped to
-    /// `[0, seq_len]`. Both values are clamped so slicing `seq[start0..end0_excl]`
-    /// is always in-bounds. Returns `(0, 0)` when the region misses entirely.
+    /// `[0, seq_len]` so slicing `seq[start0..end0_excl]` is always in-bounds.
+    /// Returns `(0, 0)` when the region misses the sequence entirely.
     #[must_use]
     pub fn resolve(&self, seq_len: usize) -> (usize, usize) {
         // Sequence lengths in bioinformatics are well within i64 range (max ~3 GB
@@ -46,25 +54,28 @@ impl Region {
         #[allow(clippy::cast_possible_wrap)]
         let len = seq_len as i64;
 
-        // Convert 1-based signed to 0-based: positive i → i-1; negative i → len+i.
+        // Convert 1-based signed to 0-based inclusive. A negative start that
+        // counts past the front of a short sequence clamps to position 1
+        // (index 0) — seqkit's "last N bases" idiom yields the whole sequence
+        // rather than nothing. A positive end past the sequence clamps to its
+        // last base.
         let start0 = if self.start > 0 {
             self.start - 1
         } else {
-            len + self.start
+            (len + self.start).max(0)
         };
         let end0_incl = if self.end > 0 {
-            self.end - 1
+            self.end.min(len) - 1
         } else {
             len + self.end
         };
 
-        // Guard: if start or end resolved below 0, the result is empty.
-        if start0 < 0 || end0_incl < 0 || start0 > end0_incl {
+        if end0_incl < 0 || start0 > end0_incl {
             return (0, 0);
         }
 
-        // After clamping to [0, len] both values are non-negative and ≤ seq_len,
-        // so the cast to usize is safe on any platform where usize ≥ 32 bits.
+        // Both values are now non-negative and ≤ seq_len, so the cast to usize
+        // is safe on any platform where usize ≥ 32 bits.
         #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
         let s = start0.clamp(0, len) as usize;
         #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
