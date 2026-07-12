@@ -177,3 +177,37 @@ fn mixed_sign_binary_fails_loud() {
         "malformed error envelope: {envelope}"
     );
 }
+
+fn run_on(input: &str, region: &str, append_coord: bool, line_width: usize) -> String {
+    let region = Region::parse(region).expect("valid region");
+    let opts = SubseqOptions {
+        region,
+        append_coord,
+        line_width,
+    };
+    let mut buf = Vec::new();
+    subseq(&golden(input), &opts, &mut buf).expect("subseq failed");
+    String::from_utf8(buf).expect("valid utf8")
+}
+
+// Regression: with -R the ID is split at the first whitespace (tab OR space) and
+// the separator normalized to a single space, matching seqkit 2.9.0. Previously a
+// tab-delimited header split on the wrong (later) space.
+#[test]
+fn tab_header_region_coord() {
+    assert_eq!(
+        run_on("tab_header.fa", "1:5", true, 60),
+        expected("tab_coord.fa"),
+        "tab -R mismatch"
+    );
+}
+
+// Regression: without -R the original header is emitted verbatim (tab preserved).
+#[test]
+fn tab_header_preserved() {
+    assert_eq!(
+        run_on("tab_header.fa", "1:5", false, 60),
+        expected("tab_plain.fa"),
+        "tab verbatim mismatch"
+    );
+}

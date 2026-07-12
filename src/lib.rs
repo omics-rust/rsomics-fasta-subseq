@@ -103,18 +103,12 @@ pub fn subseq(input: &Path, opts: &SubseqOptions, out: &mut dyn Write) -> Result
         let full_header = std::str::from_utf8(rec.id())
             .map_err(|e| RsomicsError::InvalidInput(format!("non-UTF-8 header: {e}")))?;
 
-        let (id, desc) = match full_header.find(' ') {
-            Some(pos) => (&full_header[..pos], Some(&full_header[pos..])),
-            None => (full_header, None),
-        };
-
         let seq = rec.seq();
         let (s, e) = opts.region.resolve(seq.len());
         let window = &seq[s..e];
 
         write_record(
-            id,
-            desc,
+            full_header,
             window,
             &opts.region,
             opts.append_coord,
@@ -127,22 +121,23 @@ pub fn subseq(input: &Path, opts: &SubseqOptions, out: &mut dyn Write) -> Result
 }
 
 fn write_record(
-    id: &str,
-    desc: Option<&str>,
+    full_header: &str,
     seq: &[u8],
     region: &Region,
     append_coord: bool,
     line_width: usize,
     out: &mut dyn Write,
 ) -> Result<()> {
-    // Header reconstruction mirrors seqkit's output:
-    //   with -R and no description:  ">id:s-e \n"   (trailing space)
-    //   with -R and description:     ">id:s-e desc\n"
-    //   without -R:                  ">id desc\n"    (original header intact)
     if append_coord {
-        match desc {
+        // seqkit parses the ID as the first whitespace-delimited token (^(\S+)\s?)
+        // and appends the coordinate to it; the rest becomes the description.
+        let (id, rest) = match full_header.find([' ', '\t']) {
+            Some(pos) => (&full_header[..pos], Some(&full_header[pos + 1..])),
+            None => (full_header, None),
+        };
+        match rest {
             Some(d) => {
-                write!(out, ">{id}:{}-{}{d}", region.start, region.end)
+                write!(out, ">{id}:{}-{} {d}", region.start, region.end)
                     .map_err(RsomicsError::Io)?;
             }
             None => {
@@ -150,10 +145,9 @@ fn write_record(
             }
         }
     } else {
-        match desc {
-            Some(d) => write!(out, ">{id}{d}").map_err(RsomicsError::Io)?,
-            None => write!(out, ">{id}").map_err(RsomicsError::Io)?,
-        }
+        // Without -R the original header is emitted verbatim (tabs and repeated
+        // spaces preserved), matching seqkit.
+        write!(out, ">{full_header}").map_err(RsomicsError::Io)?;
     }
     out.write_all(b"\n").map_err(RsomicsError::Io)?;
 
